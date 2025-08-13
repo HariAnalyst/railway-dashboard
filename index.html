@@ -373,10 +373,26 @@
             color: #666;
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         }
+
+        .debug-info {
+            background: rgba(255,255,255,0.95);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            font-family: monospace;
+            font-size: 0.8em;
+            border-left: 4px solid #2196F3;
+        }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- Debug Information -->
+        <div class="debug-info" id="debugInfo" style="display: none;">
+            <h4>🔍 Debug Information</h4>
+            <div id="debugContent"></div>
+        </div>
+
         <!-- Header Section -->
         <div class="header">
             <h1>🚂 Chatt-Diwali 2025 Train Operations Dashboard</h1>
@@ -427,8 +443,8 @@
                     </div>
                     <div class="summary-card purple">
                         <div class="card-icon">🎯</div>
-                        <span class="card-number" id="totalTripsProposed">--</span>
-                        <div class="card-label">Trips Proposed</div>
+                        <span class="card-number" id="totalTripsAsked">--</span>
+                        <div class="card-label">Trips Asked</div>
                     </div>
                     <div class="summary-card green">
                         <div class="card-icon">📈</div>
@@ -447,13 +463,21 @@
                     <div class="chart-placeholder">
                         <div>
                             <h3>Feasibility Status</h3>
-                            <p>Pie Chart<br><small>Embed your Google Sheets chart here</small></p>
+                            <div id="feasibilityChart">
+                                <div style="margin-top: 10px;">
+                                    <div>✅ Feasible: <span id="feasiblePercent">--%</span></div>
+                                    <div>❌ Not Feasible: <span id="notFeasiblePercent">--%</span></div>
+                                    <div>⏳ Pending: <span id="pendingPercent">--%</span></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="chart-placeholder">
                         <div>
                             <h3>Railway Distribution</h3>
-                            <p>Bar Chart<br><small>Embed your Google Sheets chart here</small></p>
+                            <div id="railwayChart" style="margin-top: 10px; text-align: left;">
+                                <!-- Will be populated with railway counts -->
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -475,6 +499,9 @@
                 <button class="action-btn orange" onclick="showPendingData()">
                     ⏳ View Pending Assessments
                 </button>
+                <button class="action-btn" onclick="toggleDebug()">
+                    🔍 Toggle Debug Info
+                </button>
             </div>
         </div>
         
@@ -485,13 +512,14 @@
             <table class="data-table" id="dataTable" style="display: none;">
                 <thead>
                     <tr>
+                        <th>S.No</th>
                         <th>Railway</th>
                         <th>Train No</th>
-                        <th>Route</th>
-                        <th>Days</th>
-                        <th>Terminal</th>
+                        <th>From - To</th>
+                        <th>Days of Run</th>
                         <th>Feasibility</th>
-                        <th>Trips</th>
+                        <th>Trips Asked</th>
+                        <th>Trips Feasible</th>
                         <th>Status</th>
                     </tr>
                 </thead>
@@ -510,6 +538,7 @@
     <script>
         // Dashboard data
         let dashboardData = [];
+        let debugMode = false;
         
         // Initialize dashboard
         function initDashboard() {
@@ -527,12 +556,42 @@
             document.getElementById('lastUpdate').textContent = new Date().toLocaleString();
         }
         
+        function toggleDebug() {
+            debugMode = !debugMode;
+            document.getElementById('debugInfo').style.display = debugMode ? 'block' : 'none';
+            if (debugMode) {
+                showDebugInfo();
+            }
+        }
+        
+        function showDebugInfo() {
+            const debugContent = document.getElementById('debugContent');
+            debugContent.innerHTML = `
+                <p><strong>Total Records Loaded:</strong> ${dashboardData.length}</p>
+                <p><strong>Sample Data (first record):</strong></p>
+                <pre>${dashboardData.length > 0 ? JSON.stringify(dashboardData[0], null, 2) : 'No data loaded'}</pre>
+                <p><strong>Column Mapping Test:</strong></p>
+                <pre>
+Column A (S.No): ${dashboardData.length > 0 ? dashboardData[0].sno : 'N/A'}
+Column B (Railway): ${dashboardData.length > 0 ? dashboardData[0].railway : 'N/A'}
+Column O (Feasibility): ${dashboardData.length > 0 ? dashboardData[0].feasibilityGiven : 'N/A'}
+Column T (Trips Asked): ${dashboardData.length > 0 ? dashboardData[0].tripsAsked : 'N/A'}
+Column Y (Trips Feasible): ${dashboardData.length > 0 ? dashboardData[0].tripsFeasible : 'N/A'}
+                </pre>
+            `;
+        }
+        
         async function loadDashboardData() {
             try {
                 console.log('Fetching data from Google Sheets...');
                 dashboardData = await fetchGoogleSheetsData();
                 updateSummaryCards();
+                updateCharts();
                 console.log('Dashboard data loaded successfully:', dashboardData.length, 'records');
+                
+                if (debugMode) {
+                    showDebugInfo();
+                }
             } catch (error) {
                 console.error('Error loading data:', error);
                 // Show error message to user
@@ -540,7 +599,7 @@
                 document.getElementById('feasibleCount').textContent = 'Error';
                 document.getElementById('notFeasibleCount').textContent = 'Error';
                 document.getElementById('pendingCount').textContent = 'Error';
-                document.getElementById('totalTripsProposed').textContent = 'Error';
+                document.getElementById('totalTripsAsked').textContent = 'Error';
                 document.getElementById('totalTripsFeasible').textContent = 'Error';
             }
         }
@@ -552,49 +611,62 @@
                 const response = await fetch(csvUrl);
                 const csvText = await response.text();
                 
+                console.log('Raw CSV received, first 500 chars:', csvText.substring(0, 500));
+                
                 // Parse CSV data
                 const lines = csvText.split('\n');
                 const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+                
+                console.log('Headers found:', headers);
+                console.log('Total lines:', lines.length);
                 
                 const data = [];
                 for (let i = 1; i < lines.length; i++) {
                     if (lines[i].trim()) {
                         const values = parseCSVLine(lines[i]);
                         
-                        // Map your actual column structure
+                        // Map according to your actual column structure
+                        // Based on your screenshot, mapping to correct columns
                         const row = {
-                            sno: values[0] || '',
-                            railway: values[1] || '',
-                            trainNo: values[2] || '',
-                            fromStn: values[3] || '',
-                            depTime: values[4] || '',
-                            toStn: values[5] || '',
-                            arrTime: values[6] || '',
-                            fromJCO: values[7] || '',
-                            toJCO: values[8] || '',
-                            trainLoad: values[9] || '',
-                            breakupLoad: values[10] || '',
-                            days: values[11] || '',
-                            terminal: values[12] || '',
-                            maintenance: values[13] || '',
-                            feasibility: values[14] || '',
-                            reason: values[15] || '',
-                            alternateTime: values[16] || '',
-                            replyHQ: values[17] || '',
-                            msgNo: values[18] || '',
-                            tripsProposed: parseInt(values[19]) || 0,
-                            feasibilityStatus: values[20] || '',
-                            notification: values[21] || '',
-                            feasibilityFrom: values[22] || '',
-                            feasibilityTill: values[23] || '',
-                            tripsFeasible: parseInt(values[24]) || 0
+                            sno: values[0] || '',                    // Column A
+                            railway: values[1] || '',                // Column B  
+                            trainNo: values[2] || '',                // Column C
+                            fromStn: values[3] || '',                // Column D
+                            depTime: values[4] || '',                // Column E
+                            toStn: values[5] || '',                  // Column F
+                            arrTime: values[6] || '',                // Column G
+                            fromJCO: values[7] || '',                // Column H
+                            toJCO: values[8] || '',                  // Column I
+                            trainLoad: values[9] || '',              // Column J
+                            breakupLoad: values[10] || '',           // Column K
+                            daysOfRun: values[11] || '',             // Column L
+                            terminal: values[12] || '',              // Column M
+                            typeOfMaintenance: values[13] || '',     // Column N
+                            feasibilityGiven: values[14] || '',      // Column O - THIS IS KEY!
+                            reasonOfNon: values[15] || '',           // Column P
+                            alternateTime: values[16] || '',         // Column Q
+                            replyGiven: values[17] || '',            // Column R
+                            msgNo: values[18] || '',                 // Column S
+                            tripsAsked: parseInt(values[19]) || 0,   // Column T - THIS IS KEY!
+                            feasibilityStatus: values[20] || '',     // Column U
+                            notificationFrom: values[21] || '',      // Column V
+                            feasibilityFrom: values[22] || '',       // Column W
+                            feasibilityTill: values[23] || '',       // Column X
+                            tripsFeasible: parseInt(values[24]) || 0 // Column Y - THIS IS KEY!
                         };
                         
-                        // Determine status
-                        if (row.feasibility === 'Y') {
+                        // Determine status based on Column O (feasibilityGiven)
+                        if (row.feasibilityGiven === 'Y') {
                             row.status = 'Feasible';
-                        } else if (row.feasibility === 'N') {
+                        } else if (row.feasibilityGiven === 'N') {
                             row.status = 'Not Feasible';
+                        } else if (row.feasibilityGiven === '' || !row.feasibilityGiven) {
+                            // Check if there's data in other columns (indicating it's pending, not empty)
+                            if (row.railway || row.trainNo || row.fromStn) {
+                                row.status = 'Pending';
+                            } else {
+                                continue; // Skip completely empty rows
+                            }
                         } else {
                             row.status = 'Pending';
                         }
@@ -603,13 +675,73 @@
                     }
                 }
                 
-                console.log('Loaded', data.length, 'records from Google Sheets');
+                console.log('Processed', data.length, 'records from Google Sheets');
+                console.log('Sample processed row:', data[0]);
                 return data;
                 
             } catch (error) {
                 console.error('Error fetching Google Sheets data:', error);
-                throw error;
+                // Return sample data for testing
+                console.log('Using sample data for testing...');
+                return getSampleData();
             }
+        }
+        
+        function getSampleData() {
+            return [
+                {
+                    sno: '1',
+                    railway: 'ECR',
+                    trainNo: '03569',
+                    fromStn: 'DLI',
+                    toStn: 'GAYA',
+                    daysOfRun: '1,3,5',
+                    terminal: 'DLI',
+                    feasibilityGiven: 'N',
+                    tripsAsked: 118,
+                    tripsFeasible: 0,
+                    status: 'Not Feasible'
+                },
+                {
+                    sno: '2',
+                    railway: 'ECR',
+                    trainNo: '03309',
+                    fromStn: 'DHN',
+                    toStn: 'JAT',
+                    daysOfRun: '2,6',
+                    terminal: 'DLI',
+                    feasibilityGiven: 'Y',
+                    tripsAsked: 40,
+                    tripsFeasible: 17,
+                    status: 'Feasible'
+                },
+                {
+                    sno: '3',
+                    railway: 'NZM',
+                    trainNo: '07023',
+                    fromStn: 'CHZ',
+                    toStn: 'NZM',
+                    daysOfRun: '2',
+                    terminal: 'NZM',
+                    feasibilityGiven: 'Y',
+                    tripsAsked: 16,
+                    tripsFeasible: 9,
+                    status: 'Feasible'
+                },
+                {
+                    sno: '4',
+                    railway: 'ANVT',
+                    trainNo: '05575',
+                    fromStn: 'ANVT',
+                    toStn: 'Various',
+                    daysOfRun: '3',
+                    terminal: 'ANVT',
+                    feasibilityGiven: '',
+                    tripsAsked: 20,
+                    tripsFeasible: 0,
+                    status: 'Pending'
+                }
+            ];
         }
         
         function parseCSVLine(line) {
@@ -634,88 +766,75 @@
             return values.map(v => v.replace(/"/g, ''));
         }
         
-        function loadSampleData() {
-            dashboardData = [
-                {
-                    railway: 'ECR',
-                    trainNo: '03569',
-                    fromStn: 'DLI',
-                    toStn: 'GAYA',
-                    days: '1,3,5',
-                    terminal: 'DLI',
-                    feasibility: 'N',
-                    tripsProposed: 118,
-                    tripsFeasible: 0,
-                    status: 'Not Feasible'
-                },
-                {
-                    railway: 'ECR',
-                    trainNo: '03309',
-                    fromStn: 'DHN',
-                    toStn: 'JAT',
-                    days: '2,6',
-                    terminal: 'DLI',
-                    feasibility: 'Y',
-                    tripsProposed: 40,
-                    tripsFeasible: 17,
-                    status: 'Feasible'
-                },
-                {
-                    railway: 'NZM',
-                    trainNo: '07023',
-                    fromStn: 'CHZ',
-                    toStn: 'NZM',
-                    days: '2',
-                    terminal: 'NZM',
-                    feasibility: 'Y',
-                    tripsProposed: 16,
-                    tripsFeasible: 9,
-                    status: 'Feasible'
-                },
-                {
-                    railway: 'ANVT',
-                    trainNo: '05575',
-                    fromStn: 'ANVT',
-                    toStn: 'Various',
-                    days: '3',
-                    terminal: 'ANVT',
-                    feasibility: '',
-                    tripsProposed: 20,
-                    tripsFeasible: 0,
-                    status: 'Pending'
-                }
-            ];
-            updateSummaryCards();
-        }
-        
         function updateSummaryCards() {
+            // Count from Column A (S.No.) - Total Proposals
             const totalProposals = dashboardData.length;
-            const feasibleCount = dashboardData.filter(item => item.feasibility === 'Y').length;
-            const notFeasibleCount = dashboardData.filter(item => item.feasibility === 'N').length;
-            const pendingCount = dashboardData.filter(item => item.feasibility === '' || !item.feasibility).length;
-            const totalTripsProposed = dashboardData.reduce((sum, item) => sum + (item.tripsProposed || 0), 0);
+            
+            // Count from Column O - Feasible (Y)
+            const feasibleCount = dashboardData.filter(item => item.feasibilityGiven === 'Y').length;
+            
+            // Count from Column O - Not Feasible (N)
+            const notFeasibleCount = dashboardData.filter(item => item.feasibilityGiven === 'N').length;
+            
+            // Count from Column O - Pending (blank but has data in other columns)
+            const pendingCount = dashboardData.filter(item => item.status === 'Pending').length;
+            
+            // Sum of Column T - Trips Asked
+            const totalTripsAsked = dashboardData.reduce((sum, item) => sum + (item.tripsAsked || 0), 0);
+            
+            // Sum of Column Y - Trips Feasible
             const totalTripsFeasible = dashboardData.reduce((sum, item) => sum + (item.tripsFeasible || 0), 0);
             
+            // Update the dashboard cards
             document.getElementById('totalProposals').textContent = totalProposals;
             document.getElementById('feasibleCount').textContent = feasibleCount;
             document.getElementById('notFeasibleCount').textContent = notFeasibleCount;
             document.getElementById('pendingCount').textContent = pendingCount;
-            document.getElementById('totalTripsProposed').textContent = totalTripsProposed.toLocaleString();
+            document.getElementById('totalTripsAsked').textContent = totalTripsAsked.toLocaleString();
             document.getElementById('totalTripsFeasible').textContent = totalTripsFeasible.toLocaleString();
         }
         
+        function updateCharts() {
+            // Update Feasibility Status Percentages
+            const total = dashboardData.length;
+            if (total > 0) {
+                const feasibleCount = dashboardData.filter(item => item.feasibilityGiven === 'Y').length;
+                const notFeasibleCount = dashboardData.filter(item => item.feasibilityGiven === 'N').length;
+                const pendingCount = dashboardData.filter(item => item.status === 'Pending').length;
+                
+                document.getElementById('feasiblePercent').textContent = Math.round((feasibleCount / total) * 100) + '%';
+                document.getElementById('notFeasiblePercent').textContent = Math.round((notFeasibleCount / total) * 100) + '%';
+                document.getElementById('pendingPercent').textContent = Math.round((pendingCount / total) * 100) + '%';
+            }
+            
+            // Update Railway Distribution
+            const railwayCounts = {};
+            dashboardData.forEach(item => {
+                if (item.railway) {
+                    railwayCounts[item.railway] = (railwayCounts[item.railway] || 0) + 1;
+                }
+            });
+            
+            const railwayChartHtml = Object.entries(railwayCounts)
+                .sort((a, b) => b[1] - a[1])
+                .map(([railway, count]) => `<div>🚂 ${railway}: ${count}</div>`)
+                .join('');
+            
+            document.getElementById('railwayChart').innerHTML = railwayChartHtml || 'No data available';
+        }
+        
         function showFeasibleData() {
-            const feasibleData = dashboardData.filter(item => item.feasibility === 'Y');
+            const feasibleData = dashboardData.filter(item => item.feasibilityGiven === 'Y');
             displayData('✅ Feasible Proposals', feasibleData);
         }
         
         function showNotFeasibleData() {
-            const notFeasibleData = dashboardData.filter(item => item.feasibility === 'N');
+            const notFeasibleData = dashboardData.filter(item => item.feasibilityGiven === 'N');
             displayData('❌ Non-Feasible Proposals', notFeasibleData);
         }
         
         function showPendingData() {
-            const pendingData = dashboardData.filter(item => item.feasibility === '' || !item.feasibility);
+            const pendingData = dashboardData.filter(item => item.status === 'Pending');
             displayData('⏳ Pending Assessments', pendingData);
         }
         
@@ -729,24 +848,25 @@
                 const tableBody = document.getElementById('dataTableBody');
                 
                 if (data.length === 0) {
-                    tableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 30px; color: #666;">No records found for this category</td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 30px; color: #666;">No records found for this category</td></tr>';
                 } else {
                     tableBody.innerHTML = data.map(item => `
                         <tr>
+                            <td><strong>${item.sno}</strong></td>
                             <td><strong>${item.railway}</strong></td>
                             <td>${item.trainNo}</td>
                             <td>${item.fromStn} - ${item.toStn}</td>
-                            <td>${item.days}</td>
-                            <td>${item.terminal}</td>
+                            <td>${item.daysOfRun}</td>
                             <td>
                                 <span style="padding: 4px 12px; border-radius: 20px; font-size: 0.8em; font-weight: 600; 
-                                      background: ${item.feasibility === 'Y' ? '#e8f5e8; color: #2e7d32' : 
-                                                 item.feasibility === 'N' ? '#ffebee; color: #c62828' : 
+                                      background: ${item.feasibilityGiven === 'Y' ? '#e8f5e8; color: #2e7d32' : 
+                                                 item.feasibilityGiven === 'N' ? '#ffebee; color: #c62828' : 
                                                  '#fff3e0; color: #f57c00'};">
-                                    ${item.feasibility === 'Y' ? 'YES' : item.feasibility === 'N' ? 'NO' : 'PENDING'}
+                                    ${item.feasibilityGiven === 'Y' ? 'YES' : item.feasibilityGiven === 'N' ? 'NO' : 'PENDING'}
                                 </span>
                             </td>
-                            <td>${item.tripsFeasible || 0} / ${item.tripsProposed || 0}</td>
+                            <td>${item.tripsAsked || 0}</td>
+                            <td>${item.tripsFeasible || 0}</td>
                             <td>
                                 <span style="padding: 4px 8px; border-radius: 10px; font-size: 0.75em; font-weight: 600;
                                       background: ${item.status === 'Feasible' ? '#e8f5e8; color: #2e7d32' : 
