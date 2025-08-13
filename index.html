@@ -625,34 +625,39 @@ Column Y (Trips Feasible): ${dashboardData.length > 0 ? dashboardData[0].tripsFe
                     if (lines[i].trim()) {
                         const values = parseCSVLine(lines[i]);
                         
+                        // Skip rows that don't have essential data (S.No, Railway, Train No)
+                        if (!values[0] || !values[1] || !values[2]) {
+                            continue; // Skip empty/incomplete rows
+                        }
+                        
                         // Map according to your actual column structure
-                        // Based on your screenshot, mapping to correct columns
+                        // Based on your latest screenshot showing exact column positions
                         const row = {
-                            sno: values[0] || '',                    // Column A
-                            railway: values[1] || '',                // Column B  
-                            trainNo: values[2] || '',                // Column C
-                            fromStn: values[3] || '',                // Column D
-                            depTime: values[4] || '',                // Column E
-                            toStn: values[5] || '',                  // Column F
-                            arrTime: values[6] || '',                // Column G
-                            fromJCO: values[7] || '',                // Column H
-                            toJCO: values[8] || '',                  // Column I
-                            trainLoad: values[9] || '',              // Column J
-                            breakupLoad: values[10] || '',           // Column K
-                            daysOfRun: values[11] || '',             // Column L
-                            terminal: values[12] || '',              // Column M
-                            typeOfMaintenance: values[13] || '',     // Column N
-                            feasibilityGiven: values[14] || '',      // Column O - THIS IS KEY!
-                            reasonOfNon: values[15] || '',           // Column P
-                            alternateTime: values[16] || '',         // Column Q
-                            replyGiven: values[17] || '',            // Column R
-                            msgNo: values[18] || '',                 // Column S
-                            tripsAsked: parseInt(values[19]) || 0,   // Column T - THIS IS KEY!
-                            feasibilityStatus: values[20] || '',     // Column U
-                            notificationFrom: values[21] || '',      // Column V
-                            feasibilityFrom: values[22] || '',       // Column W
-                            feasibilityTill: values[23] || '',       // Column X
-                            tripsFeasible: parseInt(values[24]) || 0 // Column Y - THIS IS KEY!
+                            sno: values[0] ? values[0].trim() : '',                    // Column A
+                            railway: values[1] ? values[1].trim() : '',               // Column B  
+                            trainNo: values[2] ? values[2].trim() : '',               // Column C
+                            fromStn: values[3] ? values[3].trim() : '',               // Column D
+                            depTime: values[4] ? values[4].trim() : '',               // Column E
+                            toStn: values[5] ? values[5].trim() : '',                 // Column F
+                            arrTime: values[6] ? values[6].trim() : '',               // Column G
+                            fromJCO: values[7] ? values[7].trim() : '',               // Column H
+                            toJCO: values[8] ? values[8].trim() : '',                 // Column I
+                            trainLoad: values[9] ? values[9].trim() : '',             // Column J
+                            breakupLoad: values[10] ? values[10].trim() : '',         // Column K
+                            daysOfRun: values[11] ? values[11].trim() : '',           // Column L
+                            terminal: values[12] ? values[12].trim() : '',            // Column M
+                            typeOfMaintenance: values[13] ? values[13].trim() : '',   // Column N
+                            feasibilityGiven: values[14] ? values[14].trim() : '',    // Column O - FEASIBILITY KEY!
+                            reasonOfNon: values[15] ? values[15].trim() : '',         // Column P
+                            alternateTime: values[16] ? values[16].trim() : '',       // Column Q
+                            replyGiven: values[17] ? values[17].trim() : '',          // Column R
+                            msgNo: values[18] ? values[18].trim() : '',               // Column S
+                            tripsAsked: parseFloat(values[19]) || 0,                  // Column T - TRIPS ASKED KEY!
+                            feasibilityStatus: values[20] ? values[20].trim() : '',   // Column U
+                            notificationFrom: values[21] ? values[21].trim() : '',    // Column V
+                            feasibilityFrom: values[22] ? values[22].trim() : '',     // Column W
+                            feasibilityTill: values[23] ? values[23].trim() : '',     // Column X
+                            tripsFeasible: parseFloat(values[24]) || 0                // Column Y - TRIPS FEASIBLE KEY!
                         };
                         
                         // Determine status based on Column O (feasibilityGiven)
@@ -661,12 +666,8 @@ Column Y (Trips Feasible): ${dashboardData.length > 0 ? dashboardData[0].tripsFe
                         } else if (row.feasibilityGiven === 'N') {
                             row.status = 'Not Feasible';
                         } else if (row.feasibilityGiven === '' || !row.feasibilityGiven) {
-                            // Check if there's data in other columns (indicating it's pending, not empty)
-                            if (row.railway || row.trainNo || row.fromStn) {
-                                row.status = 'Pending';
-                            } else {
-                                continue; // Skip completely empty rows
-                            }
+                            // Pending: Has data in other columns but Column O is blank
+                            row.status = 'Pending';
                         } else {
                             row.status = 'Pending';
                         }
@@ -675,9 +676,18 @@ Column Y (Trips Feasible): ${dashboardData.length > 0 ? dashboardData[0].tripsFe
                     }
                 }
                 
-                console.log('Processed', data.length, 'records from Google Sheets');
-                console.log('Sample processed row:', data[0]);
-                return data;
+                // Filter out any rows that might be headers or completely empty
+                const validData = data.filter(row => 
+                    row.sno && 
+                    row.sno !== 'S. No' && 
+                    row.sno !== 'S.No' && 
+                    row.railway && 
+                    row.railway !== 'From Rly'
+                );
+                
+                console.log('Processed', validData.length, 'valid records from Google Sheets');
+                console.log('Sample processed row:', validData[0]);
+                return validData;
                 
             } catch (error) {
                 console.error('Error fetching Google Sheets data:', error);
@@ -688,6 +698,7 @@ Column Y (Trips Feasible): ${dashboardData.length > 0 ? dashboardData[0].tripsFe
         }
         
         function getSampleData() {
+            // Based on your actual sheet data (rows 2-6)
             return [
                 {
                     sno: '1',
@@ -699,7 +710,7 @@ Column Y (Trips Feasible): ${dashboardData.length > 0 ? dashboardData[0].tripsFe
                     terminal: 'DLI',
                     feasibilityGiven: 'N',
                     tripsAsked: 118,
-                    tripsFeasible: 0,
+                    tripsFeasible: 39,
                     status: 'Not Feasible'
                 },
                 {
@@ -717,29 +728,42 @@ Column Y (Trips Feasible): ${dashboardData.length > 0 ? dashboardData[0].tripsFe
                 },
                 {
                     sno: '3',
-                    railway: 'NZM',
-                    trainNo: '07023',
-                    fromStn: 'CHZ',
-                    toStn: 'NZM',
-                    daysOfRun: '2',
-                    terminal: 'NZM',
+                    railway: 'ECR',
+                    trainNo: '03310',
+                    fromStn: 'JAT',
+                    toStn: 'DHN',
+                    daysOfRun: '3,7',
+                    terminal: 'DLI',
                     feasibilityGiven: 'Y',
-                    tripsAsked: 16,
-                    tripsFeasible: 9,
+                    tripsAsked: 40,
+                    tripsFeasible: 18,
                     status: 'Feasible'
                 },
                 {
                     sno: '4',
-                    railway: 'ANVT',
-                    trainNo: '05575',
-                    fromStn: 'ANVT',
-                    toStn: 'Various',
-                    daysOfRun: '3',
+                    railway: 'ECR',
+                    trainNo: '02397',
+                    fromStn: 'GAYA',
+                    toStn: 'ANVT',
+                    daysOfRun: '7',
                     terminal: 'ANVT',
-                    feasibilityGiven: '',
+                    feasibilityGiven: 'N',
                     tripsAsked: 20,
-                    tripsFeasible: 0,
-                    status: 'Pending'
+                    tripsFeasible: 7,
+                    status: 'Not Feasible'
+                },
+                {
+                    sno: '5',
+                    railway: 'ECR',
+                    trainNo: '02398',
+                    fromStn: 'ANVT',
+                    toStn: 'GAYA',
+                    daysOfRun: '1',
+                    terminal: 'ANVT',
+                    feasibilityGiven: 'N',
+                    tripsAsked: 20,
+                    tripsFeasible: 6,
+                    status: 'Not Feasible'
                 }
             ];
         }
